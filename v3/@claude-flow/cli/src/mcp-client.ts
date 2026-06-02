@@ -188,7 +188,13 @@ export async function callMCPTool<T = unknown>(
   try {
     // Call the tool handler
     const result = await tool.handler(input, context);
-    return result as T;
+    // ADR-146 P2: scan every tool result for indirect-injection before it
+    // returns to the caller. The screen is opt-in via env (default off in
+    // 3.10.34 — flip to default in v4) so existing pipelines keep their
+    // exact behaviour while the call site is exercised by tests and
+    // adopters. Telemetry from the screen lands in the shared
+    // GuardrailEvent sink (P5).
+    return applyContentBoundaryGuardrail(toolName, result) as T;
   } catch (error) {
     // Wrap and re-throw with context
     throw new MCPClientError(
@@ -197,6 +203,68 @@ export async function callMCPTool<T = unknown>(
       error instanceof Error ? error : undefined
     );
   }
+}
+
+/**
+ * ADR-146 P2 — content-boundary screen on the MCP tool dispatch path.
+ *
+ * Default behaviour (3.10.34, legacy mode): returns the result unchanged.
+ * With `CLAUDE_FLOW_STRICT_GUARDRAIL=true`, scans every string field of the
+ * result; `reject` substitutes the field with a typed marker so the caller
+ * can surface the rejection. The class itself (`ToolOutputGuardrail`)
+ * shipped in ADR-131 P1; this call site is what closes #2149.
+ *
+ * Implementation note: we resolve the guardrail lazily so the cold-import
+ * cost of `@claude-flow/security` does not hit every CLI invocation. Once
+ * P5 wires structured telemetry, this also publishes a `GuardrailEvent`.
+ */
+let _guardrailInstance: { scanAndEnforce: (s: string) => { content: string; action: string; result: { severity: string; category: string; pattern: string } } } | null = null;
+function applyContentBoundaryGuardrail(toolName: string, result: unknown): unknown {
+  if (process.env.CLAUDE_FLOW_STRICT_GUARDRAIL !== 'true') return result;
+  if (typeof result !== 'object' || result === null) return result;
+
+  // Lazy-resolve the guardrail singleton to avoid hot-path import cost.
+  if (_guardrailInstance === null) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-require-imports
+      const sec = require('@claude-flow/security') as {
+        createToolOutputGuardrail?: (cfg?: unknown) => typeof _guardrailInstance;
+      };
+      if (sec?.createToolOutputGuardrail) {
+        _guardrailInstance = sec.createToolOutputGuardrail();
+      } else {
+        return result; // module shape unexpected — fail open
+      }
+    } catch {
+      return result; // security package not installed in this consumer — fail open
+    }
+  }
+
+  const guardrail = _guardrailInstance;
+  if (!guardrail) return result;
+
+  // Walk the result object one level deep. We do not deeply traverse because
+  // most tool results are flat record shapes; deep recursion would change the
+  // p99 latency contract. Hot strings tend to live at the top level.
+  const out: Record<string, unknown> = {};
+  let mutated = false;
+  for (const [k, v] of Object.entries(result as Record<string, unknown>)) {
+    if (typeof v === 'string' && v.length > 0) {
+      const decision = guardrail.scanAndEnforce(v);
+      if (decision.action === 'reject') {
+        out[k] = `<rejected-by-guardrail tool=${JSON.stringify(toolName)} category=${decision.result.category}>`;
+        mutated = true;
+        continue;
+      }
+      if (decision.action === 'redact') {
+        out[k] = decision.content;
+        mutated = true;
+        continue;
+      }
+    }
+    out[k] = v;
+  }
+  return mutated ? out : result;
 }
 
 /**
