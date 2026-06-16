@@ -191,6 +191,23 @@ grep -q "execCli(\[\s*'-y'\s*,\s*'metaharness@latest'" "$F" 2>/dev/null || \
 grep -q "cwd: opts" "$F" || miss="$miss no-cwd-passthrough"
 [[ -z "$miss" ]] && ok || bad "$miss"
 
+step "17z8. ruflo doctor checks the integration layer, not just upstream (iter 45)"
+miss=""
+DOC="$ROOT/../../v3/@claude-flow/cli/src/commands/doctor.ts"
+# New function present
+grep -q "function checkMetaharnessIntegration" "$DOC" 2>/dev/null || miss="$miss no-integration-check"
+# Registered in allChecks
+grep -q "checkMetaharnessIntegration, // iter 45" "$DOC" 2>/dev/null || miss="$miss not-in-allchecks"
+# Alias in componentMap
+grep -q "'metaharness-integration': checkMetaharnessIntegration" "$DOC" 2>/dev/null || miss="$miss no-component-alias"
+# Verifies the 5 critical files
+for f in _harness _similarity similarity _spike-similarity harness-similarity; do
+  grep -q "${f}" "$DOC" 2>/dev/null || miss="$miss check-missing-${f}"
+done
+# Runtime smoke: similarity({}, {}) call present
+grep -q "mod.similarity({}, {})" "$DOC" 2>/dev/null || miss="$miss no-smoke-call"
+[[ -z "$miss" ]] && ok || bad "$miss"
+
 step "17z7. MCP wrapper success semantic fix (iter 44 — exitCode is the source of truth)"
 miss=""
 WRAPPER="$ROOT/../../v3/@claude-flow/cli/src/mcp-tools/metaharness-tools.ts"
