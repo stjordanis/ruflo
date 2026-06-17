@@ -191,6 +191,20 @@ grep -q "execCli(\[\s*'-y'\s*,\s*'metaharness@latest'" "$F" 2>/dev/null || \
 grep -q "cwd: opts" "$F" || miss="$miss no-cwd-passthrough"
 [[ -z "$miss" ]] && ok || bad "$miss"
 
+step "17z24. doctor required-files include iter-53 + iter-56 surfaces (iter 61)"
+miss=""
+DOC="$ROOT/../../v3/@claude-flow/cli/src/commands/doctor.ts"
+# Newly-gated files (iter 53 surfaces)
+grep -q "drift-from-history.mjs" "$DOC" 2>/dev/null || miss="$miss no-drift-script-check"
+grep -q "harness-drift-from-history/SKILL.md" "$DOC" 2>/dev/null || miss="$miss no-drift-skill-check"
+# Newly-gated iter-56 async exports
+grep -q "runHarnessAsync" "$DOC" 2>/dev/null || miss="$miss no-runHarnessAsync-check"
+grep -q "runMetaharnessAsync" "$DOC" 2>/dev/null || miss="$miss no-runMetaharnessAsync-check"
+grep -q "oia-audit parallelization will fail" "$DOC" 2>/dev/null || miss="$miss no-async-fail-msg"
+# Comment block updated
+grep -q "iter 36-53 surfaces" "$DOC" 2>/dev/null || miss="$miss no-iter53-comment"
+[[ -z "$miss" ]] && ok || bad "$miss"
+
 step "17z23. ADR-150 implementation notes reflect iters 13-59 (iter 60)"
 miss=""
 ADR="$ROOT/../../v3/docs/adr/ADR-150-metaharness-integration-surfaces.md"
@@ -434,8 +448,9 @@ grep -q "self-roundtrip overall === 1" "$F" 2>/dev/null || miss="$miss no-self-m
 grep -q "process.exit(2)" "$F" 2>/dev/null || miss="$miss no-cannot-run-exit"
 # oia-audit fix is in place: dispatches metaharness for score+genome
 OIA="$ROOT/scripts/oia-audit.mjs"
-grep -q "score', 'metaharness'" "$OIA" 2>/dev/null || miss="$miss no-metaharness-engine-score"
-grep -q "genome', 'metaharness'" "$OIA" 2>/dev/null || miss="$miss no-metaharness-engine-genome"
+# iter 56 refactored: score+genome now go through runMetaharnessAsync directly
+grep -qE "score', 'metaharness'|runMetaharnessAsync\(\['score'" "$OIA" 2>/dev/null || miss="$miss no-metaharness-engine-score"
+grep -qE "genome', 'metaharness'|runMetaharnessAsync\(\['genome'" "$OIA" 2>/dev/null || miss="$miss no-metaharness-engine-genome"
 grep -q "runMetaharness" "$OIA" 2>/dev/null || miss="$miss no-runMetaharness-import"
 # Runtime: the roundtrip test must pass when metaharness is installed,
 # or exit 2 (test-cannot-run) when it isn't. Both are smoke-green.

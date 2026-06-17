@@ -571,11 +571,14 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
  *   fail — any required file missing OR module fails to import
  *   warn — files present but module import errored at runtime
  *
- * Verified files (iter 36-44 surfaces):
- *   - plugins/ruflo-metaharness/scripts/_harness.mjs       (subprocess bridge)
- *   - plugins/ruflo-metaharness/scripts/_similarity.mjs    (ADR-152 §3.1 module)
- *   - plugins/ruflo-metaharness/scripts/similarity.mjs     (CLI skill)
+ * Verified files (iter 36-53 surfaces — full ADR-150 deep-integration set):
+ *   - plugins/ruflo-metaharness/scripts/_harness.mjs                (subprocess bridge)
+ *   - plugins/ruflo-metaharness/scripts/_similarity.mjs             (ADR-152 §3.1 module, iter 36)
+ *   - plugins/ruflo-metaharness/scripts/similarity.mjs              (CLI skill, iter 36)
+ *   - plugins/ruflo-metaharness/scripts/_spike-similarity.mjs       (regression anchor, iter 35)
+ *   - plugins/ruflo-metaharness/scripts/drift-from-history.mjs      (1-command primitive, iter 53)
  *   - plugins/ruflo-metaharness/skills/harness-similarity/SKILL.md
+ *   - plugins/ruflo-metaharness/skills/harness-drift-from-history/SKILL.md  (iter 53)
  */
 async function checkMetaharnessIntegration(): Promise<HealthCheck> {
   // Locate plugins dir using the same upward-walk pattern as
@@ -611,7 +614,10 @@ async function checkMetaharnessIntegration(): Promise<HealthCheck> {
     'scripts/_similarity.mjs',
     'scripts/similarity.mjs',
     'scripts/_spike-similarity.mjs',
+    // iter 53 surfaces — gated against silent deletion
+    'scripts/drift-from-history.mjs',
     'skills/harness-similarity/SKILL.md',
+    'skills/harness-drift-from-history/SKILL.md',
   ];
   const missing = required.filter((f) => !existsSync(join(pluginDir, f)));
   if (missing.length > 0) {
@@ -648,13 +654,30 @@ async function checkMetaharnessIntegration(): Promise<HealthCheck> {
     // correctly. parseMcpScanText is the shared util both mcp-scan.mjs
     // and oia-audit.mjs depend on; if it's missing the audit-trend
     // introduced/cleared diff silently degrades to dead code.
+    //
+    // iter 61 — additionally verify iter-56's async exports
+    // (runHarnessAsync / runMetaharnessAsync). These are the
+    // parallelization primitives oia-audit depends on; if they're
+    // missing, oia-audit's import fails and the whole pipeline breaks.
     const harnessPath = join(pluginDir, 'scripts', '_harness.mjs');
-    const harnessMod = await import(harnessPath) as { parseMcpScanText?: (s: string) => unknown };
+    const harnessMod = await import(harnessPath) as {
+      parseMcpScanText?: (s: string) => unknown;
+      runHarnessAsync?: (args: string[]) => Promise<unknown>;
+      runMetaharnessAsync?: (args: string[]) => Promise<unknown>;
+    };
     if (typeof harnessMod.parseMcpScanText !== 'function') {
       return {
         name: 'MetaHarness integration (ADR-150)',
         status: 'fail',
         message: '_harness.mjs does not export parseMcpScanText (iter 50 — needed by mcp-scan + oia-audit)',
+        fix: 'Reinstall ruflo or restore _harness.mjs from git',
+      };
+    }
+    if (typeof harnessMod.runHarnessAsync !== 'function' || typeof harnessMod.runMetaharnessAsync !== 'function') {
+      return {
+        name: 'MetaHarness integration (ADR-150)',
+        status: 'fail',
+        message: '_harness.mjs missing iter-56 async exports (runHarnessAsync / runMetaharnessAsync) — oia-audit parallelization will fail',
         fix: 'Reinstall ruflo or restore _harness.mjs from git',
       };
     }
