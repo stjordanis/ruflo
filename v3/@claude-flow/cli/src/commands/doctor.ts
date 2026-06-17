@@ -552,6 +552,186 @@ async function checkVersionFreshness(): Promise<HealthCheck> {
 }
 
 // Check Claude Code CLI (async with proper env inheritance)
+// ADR-150 — surface MetaHarness availability + harnessFit score in
+// the standard ruflo doctor flow. Graceful degradation: when metaharness
+// is not installed (no network, optionalDep skipped), the check returns
+// `warn` with a hint instead of `fail` — ruflo continues to function.
+/**
+ * iter 45 — verify the ruflo-side MetaHarness integration is intact.
+ *
+ * The existing `checkMetaharness` verifies the UPSTREAM `metaharness`
+ * package is reachable (warn if missing — it's optional per ADR-150).
+ * This check verifies the INTEGRATION LAYER (plugin scripts, production
+ * module, subprocess bridge) is intact. Unlike upstream, the integration
+ * layer is shipped with ruflo — missing files mean ruflo's install is
+ * corrupted, not that an optional dep is absent.
+ *
+ * Status mapping:
+ *   pass — all required files present + module loads + similarity() smoke OK
+ *   fail — any required file missing OR module fails to import
+ *   warn — files present but module import errored at runtime
+ *
+ * Verified files (iter 36-53 surfaces — full ADR-150 deep-integration set):
+ *   - plugins/ruflo-metaharness/scripts/_harness.mjs                (subprocess bridge)
+ *   - plugins/ruflo-metaharness/scripts/_similarity.mjs             (ADR-152 §3.1 module, iter 36)
+ *   - plugins/ruflo-metaharness/scripts/similarity.mjs              (CLI skill, iter 36)
+ *   - plugins/ruflo-metaharness/scripts/_spike-similarity.mjs       (regression anchor, iter 35)
+ *   - plugins/ruflo-metaharness/scripts/drift-from-history.mjs      (1-command primitive, iter 53)
+ *   - plugins/ruflo-metaharness/skills/harness-similarity/SKILL.md
+ *   - plugins/ruflo-metaharness/skills/harness-drift-from-history/SKILL.md  (iter 53)
+ */
+async function checkMetaharnessIntegration(): Promise<HealthCheck> {
+  // Locate plugins dir using the same upward-walk pattern as
+  // metaharness-tools.ts::locatePluginScripts() and commands/metaharness.ts
+  const candidates: string[] = [];
+  let p = process.cwd();
+  for (let i = 0; i < 8; i++) {
+    candidates.push(join(p, 'plugins', 'ruflo-metaharness'));
+    p = dirname(p);
+  }
+  candidates.push(join(process.cwd(), 'node_modules', '@claude-flow', 'cli', 'plugins', 'ruflo-metaharness'));
+
+  let pluginDir: string | null = null;
+  for (const c of candidates) {
+    if (existsSync(join(c, 'scripts', '_harness.mjs'))) {
+      pluginDir = c;
+      break;
+    }
+  }
+
+  if (!pluginDir) {
+    return {
+      name: 'MetaHarness integration (ADR-150)',
+      status: 'fail',
+      message: 'plugins/ruflo-metaharness/ not found in expected locations',
+      fix: 'Reinstall ruflo: `npm i -g ruflo@latest`',
+    };
+  }
+
+  // Required files (iter 36+44 surfaces)
+  const required = [
+    'scripts/_harness.mjs',
+    'scripts/_similarity.mjs',
+    'scripts/similarity.mjs',
+    'scripts/_spike-similarity.mjs',
+    // iter 53 surfaces — gated against silent deletion
+    'scripts/drift-from-history.mjs',
+    'skills/harness-similarity/SKILL.md',
+    'skills/harness-drift-from-history/SKILL.md',
+  ];
+  const missing = required.filter((f) => !existsSync(join(pluginDir, f)));
+  if (missing.length > 0) {
+    return {
+      name: 'MetaHarness integration (ADR-150)',
+      status: 'fail',
+      message: `Missing files: ${missing.join(', ')}`,
+      fix: 'Reinstall ruflo or restore from git: `git checkout HEAD -- plugins/ruflo-metaharness/`',
+    };
+  }
+
+  // Runtime smoke: import the similarity module and exercise it
+  try {
+    const modPath = join(pluginDir, 'scripts', '_similarity.mjs');
+    const mod = await import(modPath) as { similarity?: (a: unknown, b: unknown) => { overall?: number } };
+    if (typeof mod.similarity !== 'function') {
+      return {
+        name: 'MetaHarness integration (ADR-150)',
+        status: 'fail',
+        message: '_similarity.mjs does not export similarity()',
+        fix: 'Reinstall ruflo or restore the file from git',
+      };
+    }
+    const result = mod.similarity({}, {});
+    if (typeof result?.overall !== 'number') {
+      return {
+        name: 'MetaHarness integration (ADR-150)',
+        status: 'warn',
+        message: 'similarity() returned unexpected shape; module may be stale',
+      };
+    }
+
+    // iter 52 — also verify the iter-50 mcp-scan text parser exports
+    // correctly. parseMcpScanText is the shared util both mcp-scan.mjs
+    // and oia-audit.mjs depend on; if it's missing the audit-trend
+    // introduced/cleared diff silently degrades to dead code.
+    //
+    // iter 61 — additionally verify iter-56's async exports
+    // (runHarnessAsync / runMetaharnessAsync). These are the
+    // parallelization primitives oia-audit depends on; if they're
+    // missing, oia-audit's import fails and the whole pipeline breaks.
+    const harnessPath = join(pluginDir, 'scripts', '_harness.mjs');
+    const harnessMod = await import(harnessPath) as {
+      parseMcpScanText?: (s: string) => unknown;
+      runHarnessAsync?: (args: string[]) => Promise<unknown>;
+      runMetaharnessAsync?: (args: string[]) => Promise<unknown>;
+    };
+    if (typeof harnessMod.parseMcpScanText !== 'function') {
+      return {
+        name: 'MetaHarness integration (ADR-150)',
+        status: 'fail',
+        message: '_harness.mjs does not export parseMcpScanText (iter 50 — needed by mcp-scan + oia-audit)',
+        fix: 'Reinstall ruflo or restore _harness.mjs from git',
+      };
+    }
+    if (typeof harnessMod.runHarnessAsync !== 'function' || typeof harnessMod.runMetaharnessAsync !== 'function') {
+      return {
+        name: 'MetaHarness integration (ADR-150)',
+        status: 'fail',
+        message: '_harness.mjs missing iter-56 async exports (runHarnessAsync / runMetaharnessAsync) — oia-audit parallelization will fail',
+        fix: 'Reinstall ruflo or restore _harness.mjs from git',
+      };
+    }
+    // Smoke: parser handles empty input gracefully
+    const parsed = harnessMod.parseMcpScanText('') as { findings?: unknown };
+    if (!Array.isArray(parsed?.findings)) {
+      return {
+        name: 'MetaHarness integration (ADR-150)',
+        status: 'warn',
+        message: 'parseMcpScanText returned unexpected shape on empty input',
+      };
+    }
+
+    return {
+      name: 'MetaHarness integration (ADR-150)',
+      status: 'pass',
+      message: 'plugin scripts intact, _similarity.mjs + parseMcpScanText load, smoke OK',
+    };
+  } catch (e) {
+    return {
+      name: 'MetaHarness integration (ADR-150)',
+      status: 'warn',
+      message: `Module import errored: ${(e as Error).message.slice(0, 60)}`,
+    };
+  }
+}
+
+async function checkMetaharness(): Promise<HealthCheck> {
+  try {
+    const version = await runCommand('npx -y metaharness@latest --version 2>&1', 15000);
+    // metaharness emits multi-line stdout; parse a version-shaped line.
+    const versionMatch = version.match(/(\d+\.\d+\.\d+)/);
+    if (!versionMatch) {
+      return {
+        name: 'MetaHarness (ADR-150)',
+        status: 'warn',
+        message: 'Installed but version-string not parseable; integration may still work',
+      };
+    }
+    return {
+      name: 'MetaHarness (ADR-150)',
+      status: 'pass',
+      message: `v${versionMatch[1]} — run \`npx ruflo metaharness score\` for the full scorecard`,
+    };
+  } catch {
+    return {
+      name: 'MetaHarness (ADR-150)',
+      status: 'warn',
+      message: 'Not installed — `npx ruflo metaharness *` commands will degrade gracefully',
+      fix: 'npm install --include=optional  # to enable the metaharness optional dep',
+    };
+  }
+}
+
 async function checkClaudeCode(): Promise<HealthCheck> {
   try {
     const version = await runCommand('claude --version');
@@ -741,7 +921,7 @@ export const doctorCommand: Command = {
     {
       name: 'component',
       short: 'c',
-      description: 'Check specific component (version, node, npm, config, daemon, memory, api, git, mcp, claude, disk, typescript)',
+      description: 'Check specific component (version, node, npm, config, daemon, memory, api, git, mcp, claude, disk, typescript, agentic-flow, encryption, federation, metaharness)',
       type: 'string'
     },
     {
@@ -789,6 +969,8 @@ export const doctorCommand: Command = {
       checkAgenticFlow,
       checkEncryptionAtRest, // ADR-096 Phase 5
       checkFederationBreaker, // ADR-097 Phase 4
+      checkMetaharness, // ADR-150 — MetaHarness upstream package
+      checkMetaharnessIntegration, // iter 45 — ruflo-side integration layer
     ];
 
     const componentMap: Record<string, () => Promise<HealthCheck>> = {
@@ -809,6 +991,8 @@ export const doctorCommand: Command = {
       'agentic-flow': checkAgenticFlow,
       'encryption': checkEncryptionAtRest, // ADR-096 Phase 5
       'federation': checkFederationBreaker, // ADR-097 Phase 4
+      'metaharness': checkMetaharness, // ADR-150 — upstream package
+      'metaharness-integration': checkMetaharnessIntegration, // iter 45 — ruflo-side
     };
 
     let checksToRun = allChecks;

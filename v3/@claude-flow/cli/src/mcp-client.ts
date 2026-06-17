@@ -48,6 +48,8 @@ import { wasmAgentTools } from './mcp-tools/wasm-agent-tools.js';
 import { managedAgentTools } from './mcp-tools/managed-agent-tools.js';
 import { guidanceTools } from './mcp-tools/guidance-tools.js';
 import { autopilotTools } from './mcp-tools/autopilot-tools.js';
+// ADR-150 — MetaHarness MCP tools (score / genome / mcp-scan / threat-model / oia-audit)
+import { metaharnessTools } from './mcp-tools/metaharness-tools.js';
 // #1916: coverage-aware routing tools — defined in ruvector/coverage-tools.ts
 // but were never registered, so the `ruflo hooks coverage-*` CLI subcommands
 // failed with `Tool not found: hooks_coverage-route`.
@@ -130,6 +132,8 @@ registerTools([
   ...autopilotTools,
   // #1916: coverage-aware routing (hooks_coverage-route / -suggest / -gaps)
   ...coverageRouterTools,
+  // ADR-150 — MetaHarness static-analysis tools (5)
+  ...metaharnessTools,
 ]);
 
 /**

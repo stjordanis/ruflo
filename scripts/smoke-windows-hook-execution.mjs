@@ -58,11 +58,13 @@ const initResult = spawnSync(
     cwd: tmpDir,
     env: { ...process.env, CI: 'true', FORCE_COLOR: '0' },
     encoding: 'utf8',
-    // iter 123 — bumped from 60_000 to 180_000 (same reason as
-    // scripts/smoke-windows-init-hooks.mjs). Cold-start `ruflo init` on
-    // Windows runners exceeds 60s; init exits with status=null (timer
-    // fired) and no settings.json is written. 180s gives 3x headroom.
-    timeout: 180_000,
+    // iter 131 — bumped from 180s to 300s (5 min). macos-latest in this
+    // matrix observed `init` running exactly 180s before the timer fired
+    // (CI cold ONNX download + agentic-flow init + MCP server spawn).
+    // The CI job's timeout-minutes is 10, so 300s leaves room for the
+    // smoke's assertion phase to also run. The default GH timeout-minutes
+    // is 360s; we're now well under that on all platforms.
+    timeout: 300_000,
   }
 );
 

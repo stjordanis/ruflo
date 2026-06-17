@@ -59,13 +59,11 @@ const result = spawnSync(
       FORCE_COLOR: '0',
     },
     encoding: 'utf8',
-    // iter 123 — bumped from 60_000 to 180_000. Windows cold-start `ruflo
-    // init` consistently exceeds 60s (pnpm cache cold, hnswlib-node gyp
-    // probe overhead, antivirus stat). The init exited with status=null
-    // (= the spawn timer fired) which means it hadn't even finished the
-    // init handler, never mind written settings.json. 180s gives 3x
-    // headroom while still catching a genuinely-hung init.
-    timeout: 180_000,
+    // iter 123 → 131 — bumped from 180s to 300s. macos-latest observed
+    // running exactly 180s before the timer fired (CI cold ONNX download
+    // + agentic-flow init + MCP server spawn). 300s leaves room for the
+    // smoke's assertion phase under the job's 10-min cap.
+    timeout: 300_000,
     // Don't fail if the command exits non-zero — init may partially succeed
   }
 );

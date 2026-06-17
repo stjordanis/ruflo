@@ -25,3 +25,5 @@ export { wasmAgentTools } from './wasm-agent-tools.js';
 export { ruvllmWasmTools } from './ruvllm-tools.js';
 export { guidanceTools } from './guidance-tools.js';
 export { autopilotTools } from './autopilot-tools.js';
+// ADR-150 — MetaHarness MCP tools (score / genome / mcp-scan / threat-model / oia-audit)
+export { metaharnessTools } from './metaharness-tools.js';
