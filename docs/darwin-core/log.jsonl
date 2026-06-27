@@ -5,3 +5,9 @@
 {"iter":1,"ts":"2026-06-27T14:59:39.204Z","dim":"hnsw-search","baseline":null,"status":"BENCH-INFRA-BLOCKED","note":"Worktree missing v3/@claude-flow/cli/dist/. Fix: agent must run `npm run build` in v3/@claude-flow/cli or symlink parent dist first."}
 {"iter":1,"ts":"2026-06-27T14:59:39.204Z","dim":"moe-gate","baseline":null,"status":"BENCH-INFRA-BLOCKED","note":"Symlinked dist OK but reward-stream=200 exceeded 6 min wall. Tick 2 should use --reward-stream=50."}
 {"iter":1,"ts":"2026-06-27T14:59:39.204Z","dim":"causal-graph","baseline":null,"status":"BENCH-INFRA-BLOCKED","note":"Worktree missing dist/. Same fix as hnsw-search."}
+{"iter":2,"ts":"2026-06-27T15:17:28.524Z","dimension":"sona-adapt","action":"skipped-at-target","note":"Already 0.004123 ms/call (< 0.005 target). No optimization attempted."}
+{"iter":2,"ts":"2026-06-27T15:17:28.525Z","dimension":"reasoning-bank","change":"scifact-bm25-0.0-to-0.05","baseline":0.6256,"measured":0.628,"deltaScore":0.0024,"action":"measured-improved","commit":"28ea21f6c","note":"Small lexical tie-breaker. Cumulative scifact: 0.5694→0.628 (+10.3% rel)."}
+{"iter":2,"ts":"2026-06-27T15:17:28.525Z","dimension":"skill-distillation","action":"bench-failed","note":"Worktree could not run bench-skill-distillation.mjs."}
+{"iter":2,"ts":"2026-06-27T15:17:28.525Z","dimension":"hnsw-search","action":"bench-failed","note":"Worktree dist symlink advice insufficient."}
+{"iter":2,"ts":"2026-06-27T15:17:28.525Z","dimension":"moe-gate","action":"bench-failed","note":"Worktree dist symlink advice insufficient."}
+{"iter":2,"ts":"2026-06-27T15:17:28.525Z","dimension":"causal-graph","action":"baseline-established","measured":115,"note":"Baseline 115ms wall."}
