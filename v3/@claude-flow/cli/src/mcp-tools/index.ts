@@ -31,3 +31,9 @@ export { metaharnessTools } from './metaharness-tools.js';
 export { testgenTools } from './testgen-tools.js';
 // agenticow@~0.2.3 — Copy-On-Write memory branching (162-byte branches)
 export { agenticowTools } from './agenticow-tools.js';
+// ADR-164 — AgentBBS federated business-domain BBS rooms (Phase 1)
+export { agentbbsTools } from './agentbbs-tools.js';
+// ADR-164 Phase 2 — Business-pod template validation
+export { businessPodTools } from './business-pod-tools.js';
+// ADR-164 Phase 4 §5.1.8 — http_fetch (secure-by-default HTTP probe)
+export { httpFetchTools } from './http-fetch-tools.js';

@@ -53,6 +53,15 @@ import { metaharnessTools } from './mcp-tools/metaharness-tools.js';
 // agenticow@~0.2.3 — Copy-On-Write memory branching tools (162-byte branches);
 // optional runtime dep, every handler returns `{degraded: true}` when missing.
 import { agenticowTools } from './mcp-tools/agenticow-tools.js';
+// ADR-164 — AgentBBS federated business-domain BBS rooms (Phase 1).
+// Optional runtime dep, every handler returns `{degraded: true}` when missing.
+import { agentbbsTools } from './mcp-tools/agentbbs-tools.js';
+// ADR-164 Phase 2 — Business-pod template validation (pure local, no optional deps).
+import { businessPodTools } from './mcp-tools/business-pod-tools.js';
+// ADR-164 Phase 4 §5.1.8 — http_fetch MCP tool (secure-by-default HTTP probe
+// for ops-pod synthetic-endpoint benches). Default-rejects private addresses
+// + auth headers; opt-in via CLAUDE_FLOW_HTTP_FETCH_ALLOW_PRIVATE / _AUTH=1.
+import { httpFetchTools } from './mcp-tools/http-fetch-tools.js';
 // #1916: coverage-aware routing tools — defined in ruvector/coverage-tools.ts
 // but were never registered, so the `ruflo hooks coverage-*` CLI subcommands
 // failed with `Tool not found: hooks_coverage-route`.
@@ -139,6 +148,13 @@ registerTools([
   ...metaharnessTools,
   // agenticow@~0.2.3 — COW memory branching (4 tools, graceful-degraded when missing)
   ...agenticowTools,
+  // ADR-164 — AgentBBS federated business-domain BBS rooms (4 tools, Phase 1, graceful-degraded)
+  ...agentbbsTools,
+  // ADR-164 Phase 2 + Phase 3 — business_pod_validate + business_pod_route_backend
+  // (2 tools, no optional dep — schema validator + §3.4 domain-affinity router)
+  ...businessPodTools,
+  // ADR-164 Phase 4 §5.1.8 — http_fetch (1 tool, secure-by-default HTTP probe)
+  ...httpFetchTools,
 ]);
 
 /**
